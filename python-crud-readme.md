@@ -2,38 +2,36 @@
 
 # 🐍 Flask + PostgreSQL CRUD App (Helm Deployment)
 
-This guide will redeploy everything we built before — from **code to running app**.
+This guide redeploys everything we built previously — from **Flask code to a running Kubernetes app** using **Helm** and **PostgreSQL**.
 
 ---
 
 ## 🧩 Step 1 — Recreate Your Project Structure
 
-Inside your control plane (or wherever you run Kubernetes + Docker):
+Inside your Kubernetes control plane or local Docker environment:
 
-
-bash
+```bash
 mkdir flask-crud-demo && cd flask-crud-demo
 mkdir flaskapp
+```
 
+**Folder layout:**
 
-Folder layout:
-
-
+```
 flask-crud-demo/
  ├── flaskapp/
  │    ├── app.py
  │    ├── requirements.txt
  │    └── Dockerfile
-
+```
 
 ---
 
 ## 🧱 Step 2 — Create Flask CRUD App Files
 
-### 🐍 flaskapp/app.py
+### 🐍 `flaskapp/app.py`
 
-
-python
+```python
 import os
 import psycopg2
 from flask import Flask, jsonify, request
@@ -128,23 +126,22 @@ def delete_note(note_id):
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
-
+```
 
 ---
 
-### 📦 flaskapp/requirements.txt
+### 📦 `flaskapp/requirements.txt`
 
-
+```
 flask
 psycopg2-binary
-
+```
 
 ---
 
-### 🐳 flaskapp/Dockerfile
+### 🐳 `flaskapp/Dockerfile`
 
-
-Dockerfile
+```Dockerfile
 FROM python:3.10-slim
 
 WORKDIR /app
@@ -154,63 +151,48 @@ COPY app.py .
 
 EXPOSE 5000
 CMD ["python", "app.py"]
-
+```
 
 ---
 
 ## 🧱 Step 3 — Build and Push Docker Image
 
-Login (if not already):
-
-
-bash
+```bash
+# Login to DockerHub
 docker login -u <your-dockerhub-username>
 
-
-Build and push:
-
-
-bash
+# Build and push
 cd flaskapp
-docker build -t tejukotte/helmapp:crud .
-docker push tejukotte/helmapp:crud
+docker build -t <username>/helmapp:crud .
+docker push <username>/helmapp:crud
 
-
-Confirm:
-
-
-bash
+# Confirm
 docker images | grep helmapp
-
+```
 
 ---
 
 ## ⚓ Step 4 — Create Helm Chart
 
-Go back to project root:
-
-
-bash
+```bash
 cd ..
 helm create flask-pg-chart
 cd flask-pg-chart
-
+```
 
 Remove unnecessary files:
 
-
-bash
+```bash
 rm -f templates/hpa.yaml templates/ingress.yaml templates/serviceaccount.yaml templates/tests/test-connection.yaml
-
+```
 
 ---
 
 ## 🧩 Step 5 — Add PostgreSQL Dependency
 
-Chart.yaml
+**Chart.yaml**
 
-
-yaml
+```yaml
 apiVersion: v2
 name: flask-pg
 description: Flask CRUD app with PostgreSQL
@@ -221,33 +203,25 @@ dependencies:
   - name: postgresql
     version: 15.5.16
     repository: https://charts.bitnami.com/bitnami
+```
 
+Update and confirm dependencies:
 
-Update dependencies:
-
-
-bash
+```bash
 helm dependency update
-
-
-Confirm:
-
-
-bash
 ls charts/
 # You should see postgresql-15.5.16.tgz
-
+```
 
 ---
 
-## 🧰 Step 6 — Configure values.yaml
+## 🧰 Step 6 — Configure `values.yaml`
 
-
-yaml
+```yaml
 replicaCount: 1
 
 image:
-  repository: tejukotte/helmapp
+  repository: <username>/helmapp
   tag: "crud"
   pullPolicy: IfNotPresent
 
@@ -262,16 +236,15 @@ postgresql:
     database: flaskdb
   image:
     tag: latest
-
+```
 
 ---
 
 ## 🧾 Step 7 — Deployment Template
 
-templates/deployment.yaml
+**templates/deployment.yaml**
 
-
-yaml
+```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -303,16 +276,15 @@ spec:
               value: "{{ .Values.postgresql.auth.username }}"
             - name: DB_PASSWORD
               value: "{{ .Values.postgresql.auth.password }}"
-
+```
 
 ---
 
 ## 🌐 Step 8 — Service Template
 
-templates/service.yaml
+**templates/service.yaml**
 
-
-yaml
+```yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -328,57 +300,41 @@ spec:
       port: {{ .Values.service.port }}
       targetPort: 5000
       nodePort: 30080
-
+```
 
 ---
 
 ## 🚀 Step 9 — Deploy Everything
 
-From inside the chart folder:
-
-
-bash
+```bash
 helm install flaskpg .
-
-
-Check:
-
-
-bash
 kubectl get pods
 kubectl get svc
+```
 
+**Expected output:**
 
-Expected:
-
-
+```
 flaskpg-xxxxxx             1/1   Running   0   1m
 flaskpg-postgresql-0       1/1   Running   0   1m
-
+```
 
 ---
 
 ## 🌍 Step 10 — Access the App
 
-Get Node IP:
-
-
-bash
+```bash
+# Get Node IP
 kubectl get nodes -o wide
 
-
-Get NodePort:
-
-
-bash
+# Get NodePort
 kubectl get svc
 # Look for flaskpg → 80:30080/TCP
+```
 
+**Test the API:**
 
-Then test the API:
-
-
-bash
+```bash
 # Get all notes
 curl http://<NODE-IP>:30080/notes
 
@@ -392,26 +348,27 @@ curl http://<NODE-IP>:30080/notes/1
 
 # Delete a note
 curl -X DELETE http://<NODE-IP>:30080/notes/1
+```
 
-
-✅ You’ll get proper JSON responses from inside your Kubernetes cluster.
+✅ You’ll receive JSON responses directly from your Flask app inside Kubernetes.
 
 ---
 
-## 🧹 Step 11 — Cleanup (optional)
+## 🧹 Step 11 — Cleanup (Optional)
 
-
-bash
+```bash
 helm uninstall flaskpg
 kubectl delete pvc -l app.kubernetes.io/instance=flaskpg
-
+```
 
 ---
 
-This setup brings you **fully back** to where you were — and now you can:
+## 🎯 Summary
 
-* rebuild the Docker image anytime
-* deploy it easily with Helm
-* connect Flask ↔ PostgreSQL automatically
+You now have a **fully working Flask + PostgreSQL CRUD app** deployed via **Helm**:
+
+* Build & push your Docker image anytime
+* Deploy effortlessly with Helm
+* Flask ↔ PostgreSQL connection auto-configured
 
 ---
